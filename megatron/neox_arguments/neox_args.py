@@ -342,6 +342,11 @@ class NeoXArgsModel(NeoXArgsTemplate):
       x = x + attn(y) + mlp(y)
     """
 
+    gpt_j_rotary_fn: bool = False
+    """
+    If True, we use `rotate_every_two` from GPT-J Huggingface implementation rather than `rotate_half`.
+    """
+
     soft_prompt_tuning: dict = None
     """
     Dictionary configuring the soft prompt tuning parameters.
