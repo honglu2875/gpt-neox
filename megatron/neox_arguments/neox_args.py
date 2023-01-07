@@ -346,6 +346,11 @@ class NeoXArgsModel(NeoXArgsTemplate):
     """
     If True, we use `rotate_every_two` from GPT-J Huggingface implementation rather than `rotate_half`.
     """
+    
+    hf_gpt_j_compatible: bool = False
+    """
+    There is a minor linear algebra difference in the GPT-J implementation of huggingface and neox (exchanging the orders of reshape and split resulting in different matrices). If True, we will adjust to the huggingface GPT-J implementation so that directly copying weights becomes possible.
+    """
 
     soft_prompt_tuning: dict = None
     """

@@ -256,10 +256,11 @@ class ParallelSelfAttention(nn.Module):
             self.rotary_emb = RotaryEmbedding(
                 dim, base=neox_args.rotary_emb_base, precision=neox_args.params_dtype
             )
-            self.gpt_j_rotary_fn = neox_args.gpt_j_rotary_fn
-
         else:
             self.rotary_emb = None
+            
+        self.gpt_j_rotary_fn = neox_args.gpt_j_rotary_fn
+        self.hf_gpt_j_compatible = neox_args.hf_gpt_j_compatible
 
         self.attention_type = neox_args.attention_config[layer_number]
         self.use_flash_attention = self.attention_type == "flash"
@@ -490,17 +491,31 @@ class ParallelSelfAttention(nn.Module):
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
         mixed_x_layer, _ = self.query_key_value(hidden_states)
 
-        # [sq, b, (np * 3 * hn)] --> [sq, b, np, 3 * hn]
-        new_tensor_shape = mixed_x_layer.size()[:-1] + (
-            self.num_attention_heads_per_partition,
-            3 * self.hidden_size_per_attention_head,
-        )
-        mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
+        if self.hf_gpt_j_compatible:
+            # [sq, b, (np * 3 * hn)] --> 3 [sq, b, (np * hn)]
+            (query_layer, key_layer, value_layer) = mpu.split_tensor_along_last_dim(
+                mixed_x_layer, 3
+            )
+            # [sq, b, (np * hn)] --> [sq, b, np, hn]
+            new_tensor_shape = mixed_x_layer.size()[:-1] + (
+                self.num_attention_heads_per_partition, 
+                self.hidden_size_per_attention_head
+            )
+            (query_layer, key_layer, value_layer) = [
+                layer.reshape(*new_tensor_shape).contiguous() for layer in (query_layer, key_layer, value_layer)
+            ]
+        else:
+            # [sq, b, (np * 3 * hn)] --> [sq, b, np, 3 * hn]
+            new_tensor_shape = mixed_x_layer.size()[:-1] + (
+                self.num_attention_heads_per_partition,
+                3 * self.hidden_size_per_attention_head,
+            )
+            mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
 
-        # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
-        (query_layer, key_layer, value_layer) = mpu.split_tensor_along_last_dim(
-            mixed_x_layer, 3
-        )
+            # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
+            (query_layer, key_layer, value_layer) = mpu.split_tensor_along_last_dim(
+                mixed_x_layer, 3
+            )
 
         if exists(self.rotary_emb):
             if exists(self.rotary_ndims):

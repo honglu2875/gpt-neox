@@ -73,10 +73,11 @@ def rotate_half(x):
     )  # dim=-1 triggers a bug in earlier torch versions
 
 def rotate_every_two(x):
-    x1 = x[:, :, :, ::2]
-    x2 = x[:, :, :, 1::2]
-    x = torch.stack((-x2, x1), dim=-1)
-    return x.flatten(-2)
+    x1 = x[..., ::2]
+    x2 = x[..., 1::2]
+    return torch.cat(
+        (-x2, x1), dim=x1.ndim - 1
+    )
 
 @torch.jit.script
 def apply_rotary_pos_emb(q, k, cos, sin, offset: int = 0):
@@ -88,9 +89,10 @@ def apply_rotary_pos_emb(q, k, cos, sin, offset: int = 0):
 
 @torch.jit.script
 def apply_rotary_gpt_j(q, k, cos, sin, offset: int = 0):
+    ids = torch.arange(cos.shape[-1], dtype=torch.int64, device=q.device).view(2,-1).transpose(0,1).reshape(-1)
     cos, sin = (
-        cos[offset : q.shape[0] + offset, ...],
-        sin[offset : q.shape[0] + offset, ...],
+        cos[offset : q.shape[0] + offset, :, :, ids],
+        sin[offset : q.shape[0] + offset, :, :, ids]
     )
     return (q * cos) + (rotate_every_two(q) * sin), (k * cos) + (rotate_every_two(k) * sin)
 
