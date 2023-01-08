@@ -23,7 +23,11 @@ torch._C._jit_set_profiling_executor(False)
 torch._C._jit_override_can_fuse_on_cpu(True)
 torch._C._jit_override_can_fuse_on_gpu(True)
 
-
+def hf_newgelu(input):
+    # The faithful copy of huggingface function. Though mathematically it is the same as F.gelu, there will be a massive accuracy
+    # issue if we load huggingface binaries. Not gonna waste my time to dig into it so I just copy-paste here.
+    return 0.5 * input * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (input + 0.044715 * torch.pow(input, 3.0))))
+    
 def get_activation(neox_args):
     """retrieves the activation function specified in neox_args"""
     if neox_args.activation == "geglu":
@@ -35,6 +39,8 @@ def get_activation(neox_args):
             activation_func = erf_gelu
         elif neox_args.bias_gelu_fusion:
             activation_func = bias_gelu_impl
+        elif neox_args.hf_gpt_j_compatible:
+            activation_func = hf_newgelu
         else:
             activation_func = F.gelu
     elif neox_args.activation == "relu":

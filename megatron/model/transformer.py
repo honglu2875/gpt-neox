@@ -239,6 +239,9 @@ class ParallelSelfAttention(nn.Module):
                 mpu.get_model_parallel_rank(),
             )
 
+        self.gpt_j_rotary_fn = neox_args.gpt_j_rotary_fn
+        self.hf_gpt_j_compatible = neox_args.hf_gpt_j_compatible
+        
         # TODO: this arg shouldn't need to be passed in - get from neox_args
         if rotary:
             if neox_args.rotary_pct == 1:
@@ -254,13 +257,16 @@ class ParallelSelfAttention(nn.Module):
                 else self.hidden_size_per_attention_head
             )
             self.rotary_emb = RotaryEmbedding(
-                dim, base=neox_args.rotary_emb_base, precision=neox_args.params_dtype
+                dim, base=neox_args.rotary_emb_base, precision=neox_args.params_dtype, hf_compatible=self.hf_gpt_j_compatible
             )
         else:
             self.rotary_emb = None
             
-        self.gpt_j_rotary_fn = neox_args.gpt_j_rotary_fn
-        self.hf_gpt_j_compatible = neox_args.hf_gpt_j_compatible
+        if self.hf_gpt_j_compatible:
+            max_len = neox_args.max_position_embeddings
+            self.bias = torch.tril(torch.ones((max_len, max_len), dtype=torch.uint8)).view(
+                1, 1, max_len, max_len
+            )
 
         self.attention_type = neox_args.attention_config[layer_number]
         self.use_flash_attention = self.attention_type == "flash"
@@ -412,6 +418,48 @@ class ParallelSelfAttention(nn.Module):
         # change view [b, np, sq, hn]
         context_layer = context_layer.view(*output_size)
         return context_layer
+    
+    def hf_attention(
+        self,
+        query,
+        key,
+        value,
+        attention_mask=None,
+    ):
+
+        query = query.permute(1, 2, 0, 3)  # [sq, b, np, hn] -> [b, np, sq, hn]
+        key = key.permute(1, 2, 0, 3)
+        value = value.permute(1, 2, 0, 3)
+        
+        # compute causal mask from causal mask buffer
+        query_length, key_length = query.size(-2), key.size(-2)
+        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(torch.bool).to(query.device)
+
+        # Keep the attention weights computation in fp32 to avoid overflow issues
+        query = query.to(torch.float32)
+        key = key.to(torch.float32)
+
+        attn_weights = torch.matmul(query, key.transpose(-1, -2))
+
+        mask_value = torch.finfo(attn_weights.dtype).min
+        # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
+        # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
+        mask_value = torch.tensor(mask_value, dtype=attn_weights.dtype).to(attn_weights.device)
+        attn_weights = torch.where(causal_mask, attn_weights, mask_value)
+
+        attn_weights = attn_weights / self.norm_factor
+
+        if attention_mask is not None:
+            # Apply the attention mask
+            attn_weights = attn_weights + attention_mask
+
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1)
+        attn_weights = attn_weights.to(value.dtype)
+        attn_weights = self.attention_dropout(attn_weights)
+
+        attn_output = torch.matmul(attn_weights, value)
+
+        return attn_output
 
     def flash_attention(self, query_layer, key_layer, value_layer):
         # [b, np, sq, sk]
@@ -488,6 +536,8 @@ class ParallelSelfAttention(nn.Module):
         # Query, Key, and Value
         # =====================
 
+        if self.hf_gpt_j_compatible:
+            hidden_states = hidden_states.transpose(0, 1)
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
         mixed_x_layer, _ = self.query_key_value(hidden_states)
 
@@ -566,7 +616,9 @@ class ParallelSelfAttention(nn.Module):
         if self.use_cache:
             present = torch.stack((key_layer, value_layer))
 
-        if self.use_flash_attention:
+        if self.hf_gpt_j_compatible:
+            context_layer = self.hf_attention(query_layer, key_layer, value_layer)
+        elif self.use_flash_attention:
             context_layer = self.flash_attention(query_layer, key_layer, value_layer)
         elif not self.sparse:
             context_layer = self.attention(
@@ -591,6 +643,9 @@ class ParallelSelfAttention(nn.Module):
         # =================
 
         output, bias = self.dense(context_layer)
+        
+        if self.hf_gpt_j_compatible:
+            output = output.transpose(0, 1)
 
         if self.use_cache:
             output = [output, present]

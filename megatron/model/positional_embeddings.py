@@ -36,10 +36,13 @@ class SinusoidalPositionalEmbedding(torch.nn.Module):
 
 
 class RotaryEmbedding(torch.nn.Module):
-    def __init__(self, dim, base=10000, precision=torch.half):
+    def __init__(self, dim, base=10000, precision=torch.half, hf_compatible=False):
         super().__init__()
-        inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
-        self.register_buffer("inv_freq", inv_freq)
+        if hf_compatible:
+            self.inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
+        else:
+            inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
+            self.register_buffer("inv_freq", inv_freq)
         self.seq_len_cached = None
         self.cos_cached = None
         self.sin_cached = None
@@ -51,12 +54,12 @@ class RotaryEmbedding(torch.nn.Module):
         if seq_len != self.seq_len_cached:
             self.seq_len_cached = seq_len
             t = torch.arange(seq_len, device=x.device).type_as(self.inv_freq)
-            freqs = torch.einsum("i,j->ij", t, self.inv_freq)
+            freqs = torch.einsum("i,j->ij", t.to(x.device), self.inv_freq.to(x.device))
             emb = torch.cat((freqs, freqs), dim=-1).to(x.device)
             if self.precision == torch.bfloat16:
                 emb = emb.float()
-            self.cos_cached = emb.cos()[:, None, None, :]
-            self.sin_cached = emb.sin()[:, None, None, :]
+            self.cos_cached = emb.cos().to(self.precision)[:, None, None, :]
+            self.sin_cached = emb.sin().to(self.precision)[:, None, None, :]
             if self.precision == torch.bfloat16:
                 self.cos_cached = self.cos_cached.bfloat16()
                 self.sin_cached = self.sin_cached.bfloat16()
@@ -73,11 +76,10 @@ def rotate_half(x):
     )  # dim=-1 triggers a bug in earlier torch versions
 
 def rotate_every_two(x):
-    x1 = x[..., ::2]
-    x2 = x[..., 1::2]
-    return torch.cat(
-        (-x2, x1), dim=x1.ndim - 1
-    )
+    x1 = x[:, :, :, ::2]
+    x2 = x[:, :, :, 1::2]
+    x = torch.stack((-x2, x1), dim=-1)
+    return x.flatten(-2)
 
 @torch.jit.script
 def apply_rotary_pos_emb(q, k, cos, sin, offset: int = 0):
