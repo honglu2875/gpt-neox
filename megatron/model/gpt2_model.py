@@ -115,6 +115,7 @@ class GPT2ModelPipe(PipelineModule, torch.nn.Module):
         self.init_method, self.output_layer_init_method = get_init_methods(
             self.neox_args
         )
+        self.hf_gpt_j_compatible = neox_args.hf_gpt_j_compatible
         self.__topology__ = topology
 
         self.specs = []
@@ -292,7 +293,7 @@ class GPT2ModelPipe(PipelineModule, torch.nn.Module):
                     neox_args=self.neox_args,
                     init_method=self.init_method,
                     parallel_output=self.parallel_output,
-                    bias=neox_args.hf_gpt_j_compatible,
+                    bias=self.hf_gpt_j_compatible,
                 )
             )
 
