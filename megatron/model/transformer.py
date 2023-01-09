@@ -145,6 +145,7 @@ class ParallelLinear(nn.Module):
         neox_args,
         parallel_output=True,
         init_method=nn.init.xavier_normal_,
+        bias=False,
     ):
         super().__init__()
         parallelism = neox_args.output_layer_parallelism
@@ -153,7 +154,7 @@ class ParallelLinear(nn.Module):
                 neox_args=neox_args,
                 input_size=neox_args.hidden_size,
                 output_size=neox_args.padded_vocab_size,
-                bias=False,
+                bias=bias,
                 init_method=init_method,
                 gather_output=not parallel_output,
                 skip_bias_add=False,
@@ -163,7 +164,7 @@ class ParallelLinear(nn.Module):
                 neox_args=neox_args,
                 input_size=neox_args.hidden_size,
                 output_size=neox_args.padded_vocab_size,
-                bias=False,
+                bias=bias,
                 input_is_parallel=False,
                 init_method=init_method,
                 parallel_output=parallel_output,
