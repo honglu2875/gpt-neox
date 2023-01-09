@@ -15,6 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 import torch
 import torch.nn.functional as F
 
@@ -24,7 +25,7 @@ torch._C._jit_override_can_fuse_on_cpu(True)
 torch._C._jit_override_can_fuse_on_gpu(True)
 
 def hf_newgelu(input):
-    # The faithful copy of huggingface function. Though mathematically it is the same as F.gelu, there will be a massive accuracy
+    # The faithful copy of huggingface function. Although mathematically it is the same as F.gelu, there will be a massive accuracy
     # issue if we load huggingface binaries. Not gonna waste my time to dig into it so I just copy-paste here.
     return 0.5 * input * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (input + 0.044715 * torch.pow(input, 3.0))))
     

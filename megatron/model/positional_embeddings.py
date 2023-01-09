@@ -36,13 +36,10 @@ class SinusoidalPositionalEmbedding(torch.nn.Module):
 
 
 class RotaryEmbedding(torch.nn.Module):
-    def __init__(self, dim, base=10000, precision=torch.half, hf_compatible=False):
+    def __init__(self, dim, base=10000, precision=torch.half):
         super().__init__()
-        if hf_compatible:
-            self.inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
-        else:
-            inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
-            self.register_buffer("inv_freq", inv_freq)
+        inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
+        self.register_buffer("inv_freq", inv_freq)
         self.seq_len_cached = None
         self.cos_cached = None
         self.sin_cached = None

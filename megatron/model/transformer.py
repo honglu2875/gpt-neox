@@ -257,16 +257,19 @@ class ParallelSelfAttention(nn.Module):
                 else self.hidden_size_per_attention_head
             )
             self.rotary_emb = RotaryEmbedding(
-                dim, base=neox_args.rotary_emb_base, precision=neox_args.params_dtype, hf_compatible=self.hf_gpt_j_compatible
+                dim, base=neox_args.rotary_emb_base, precision=neox_args.params_dtype
             )
         else:
             self.rotary_emb = None
             
+        
         if self.hf_gpt_j_compatible:
             max_len = neox_args.max_position_embeddings
-            self.bias = torch.tril(torch.ones((max_len, max_len), dtype=torch.uint8)).view(
-                1, 1, max_len, max_len
-            )
+            self.max_position_embeddings = max_len
+            #self.bias = torch.tril(torch.ones((max_len, max_len), dtype=torch.uint8)).view(
+            #    1, 1, max_len, max_len
+            #)
+        
 
         self.attention_type = neox_args.attention_config[layer_number]
         self.use_flash_attention = self.attention_type == "flash"
@@ -427,13 +430,17 @@ class ParallelSelfAttention(nn.Module):
         attention_mask=None,
     ):
 
-        query = query.permute(1, 2, 0, 3)  # [sq, b, np, hn] -> [b, np, sq, hn]
-        key = key.permute(1, 2, 0, 3)
-        value = value.permute(1, 2, 0, 3)
+        query = query.permute(2, 1, 0, 3)  # [sq, b, np, hn] -> [b, np, sq, hn]
+        key = key.permute(2, 1, 0, 3)
+        value = value.permute(2, 1, 0, 3)
         
         # compute causal mask from causal mask buffer
+        max_len = self.max_position_embeddings
+        bias = torch.tril(torch.ones((max_len, max_len), dtype=torch.bool)).view(
+            1, 1, max_len, max_len
+        )
         query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(torch.bool).to(query.device)
+        causal_mask = bias[:, :, key_length - query_length : key_length, :key_length].to(query.device)
 
         # Keep the attention weights computation in fp32 to avoid overflow issues
         query = query.to(torch.float32)
