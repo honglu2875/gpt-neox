@@ -430,9 +430,9 @@ class ParallelSelfAttention(nn.Module):
         attention_mask=None,
     ):
 
-        query = query.permute(2, 1, 0, 3)  # [sq, b, np, hn] -> [b, np, sq, hn]
-        key = key.permute(2, 1, 0, 3)
-        value = value.permute(2, 1, 0, 3)
+        query = query.permute(1, 2, 0, 3)  # [sq, b, np, hn] -> [b, np, sq, hn]
+        key = key.permute(1, 2, 0, 3)
+        value = value.permute(1, 2, 0, 3)
         
         # compute causal mask from causal mask buffer
         max_len = self.max_position_embeddings
@@ -543,8 +543,7 @@ class ParallelSelfAttention(nn.Module):
         # Query, Key, and Value
         # =====================
 
-        if self.hf_gpt_j_compatible:
-            hidden_states = hidden_states.transpose(0, 1)
+        
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
         mixed_x_layer, _ = self.query_key_value(hidden_states)
 
@@ -651,8 +650,7 @@ class ParallelSelfAttention(nn.Module):
 
         output, bias = self.dense(context_layer)
         
-        if self.hf_gpt_j_compatible:
-            output = output.transpose(0, 1)
+        
 
         if self.use_cache:
             output = [output, present]
