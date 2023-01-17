@@ -361,7 +361,10 @@ class ParallelSelfAttention(nn.Module):
         )
 
         # change view to [b, np, sq, sk]
-        attention_scores = matmul_result.view(*output_size)
+        if self.hf_gpt_j_compatible:
+            attention_scores = matmul_result.view(output_size[1], output_size[0], *output_size[2:]).transpose(0,1).contiguous()
+        else:
+            attention_scores = matmul_result.view(*output_size)
 
         # ==================================================
         # Update attention mask for inference. [b, np, sq, sk]
@@ -424,56 +427,6 @@ class ParallelSelfAttention(nn.Module):
         context_layer = context_layer.view(*output_size)
         return context_layer
     
-    def hf_attention(
-        self,
-        query,
-        key,
-        value,
-        attention_mask=None,
-    ):
-
-        query = query.permute(1, 2, 0, 3)  # [sq, b, np, hn] -> [b, np, sq, hn]
-        key = key.permute(1, 2, 0, 3)
-        value = value.permute(1, 2, 0, 3)
-        
-        # compute causal mask from causal mask buffer
-        max_len = self.max_position_embeddings
-        #bias = torch.tril(torch.ones((max_len, max_len), dtype=torch.bool)).view(
-        #    1, 1, max_len, max_len
-        #)
-        query_length, key_length = query.size(-2), key.size(-2)
-        # Could potentially get super slow if the devices are different
-        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(query.device)
-        if not self.device_synced:
-            self.bias = self.bias.to(query.device)
-            self.device_synced = True
-
-        # Keep the attention weights computation in fp32 to avoid overflow issues
-        query = query.to(torch.float32)
-        key = key.to(torch.float32)
-
-        attn_weights = torch.matmul(query, key.transpose(-1, -2))
-
-        mask_value = torch.finfo(attn_weights.dtype).min
-        # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
-        # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
-        #mask_value = torch.tensor(mask_value, dtype=attn_weights.dtype).to(attn_weights.device)
-        attn_weights = torch.where(causal_mask, attn_weights, mask_value)
-
-        attn_weights = attn_weights / self.norm_factor
-
-        if attention_mask is not None:
-            # Apply the attention mask
-            attn_weights = attn_weights + attention_mask
-
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1)
-        attn_weights = attn_weights.to(value.dtype)
-        attn_weights = self.attention_dropout(attn_weights)
-
-        attn_output = torch.matmul(attn_weights, value)
-
-        return attn_output
-
     def flash_attention(self, query_layer, key_layer, value_layer):
         # [b, np, sq, sk]
         output_size = (
@@ -628,9 +581,7 @@ class ParallelSelfAttention(nn.Module):
         if self.use_cache:
             present = torch.stack((key_layer, value_layer))
 
-        if self.hf_gpt_j_compatible:
-            context_layer = self.hf_attention(query_layer, key_layer, value_layer)
-        elif self.use_flash_attention:
+        if self.use_flash_attention:
             context_layer = self.flash_attention(query_layer, key_layer, value_layer)
         elif not self.sparse:
             context_layer = self.attention(
