@@ -148,6 +148,7 @@ def _initialize_distributed(neox_args):
                 neox_args.local_rank = device
             torch.cuda.set_device(device)
 
+        print(f"world-size: {neox_args.world_size}", flush=True)
         distributed.init_distributed(
             dist_backend=neox_args.distributed_backend,
             auto_mpi_discovery=True,

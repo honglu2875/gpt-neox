@@ -270,6 +270,7 @@ class ParallelSelfAttention(nn.Module):
             self.bias = torch.tril(torch.ones((max_len, max_len), dtype=torch.uint8)).reshape(
                 1, 1, max_len, max_len
             ).to(torch.device('cuda'))
+            self.device_synced = False
         
 
         self.attention_type = neox_args.attention_config[layer_number]
@@ -443,6 +444,9 @@ class ParallelSelfAttention(nn.Module):
         query_length, key_length = query.size(-2), key.size(-2)
         # Could potentially get super slow if the devices are different
         causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(query.device)
+        if not self.device_synced:
+            self.bias = self.bias.to(query.device)
+            self.device_synced = True
 
         # Keep the attention weights computation in fp32 to avoid overflow issues
         query = query.to(torch.float32)

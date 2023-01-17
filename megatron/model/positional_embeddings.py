@@ -41,6 +41,8 @@ class RotaryEmbedding(torch.nn.Module):
         inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
         self.register_buffer("inv_freq", inv_freq)
         self.seq_len_cached = None
+        self.t = torch.arange(10000, device=torch.device('cuda'), dtype=torch.float32)
+        self.device_synced = False
         self.cos_cached = None
         self.sin_cached = None
         self.precision = precision
@@ -50,9 +52,12 @@ class RotaryEmbedding(torch.nn.Module):
             seq_len = x.shape[seq_dim]
         if seq_len != self.seq_len_cached:
             self.seq_len_cached = seq_len
-            t = torch.arange(seq_len, device=x.device).type_as(self.inv_freq)
-            freqs = torch.einsum("i,j->ij", t.to(x.device), self.inv_freq.to(x.device))
-            emb = torch.cat((freqs, freqs), dim=-1).to(x.device)
+            if not self.device_synced:
+                self.t = self.t.to(x.device)
+                self.inv_freq = self.inv_freq.to(x.device)
+                self.device_synced = True
+            freqs = torch.einsum("i,j->ij", self.t[:seq_len], self.inv_freq)
+            emb = torch.cat((freqs, freqs), dim=-1)
             if self.precision == torch.bfloat16:
                 emb = emb.float()
             self.cos_cached = emb.cos().to(self.precision)[:, None, None, :]
