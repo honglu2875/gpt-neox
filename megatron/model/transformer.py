@@ -266,9 +266,9 @@ class ParallelSelfAttention(nn.Module):
         if self.hf_gpt_j_compatible:
             max_len = neox_args.max_position_embeddings
             self.max_position_embeddings = max_len
-            #self.bias = torch.tril(torch.ones((max_len, max_len), dtype=torch.uint8)).view(
-            #    1, 1, max_len, max_len
-            #)
+            self.bias = torch.tril(torch.ones((max_len, max_len), dtype=torch.uint8)).reshape(
+                1, 1, max_len, max_len
+            ).to(torch.device('cuda'))
         
 
         self.attention_type = neox_args.attention_config[layer_number]
@@ -436,11 +436,12 @@ class ParallelSelfAttention(nn.Module):
         
         # compute causal mask from causal mask buffer
         max_len = self.max_position_embeddings
-        bias = torch.tril(torch.ones((max_len, max_len), dtype=torch.bool)).view(
-            1, 1, max_len, max_len
-        )
+        #bias = torch.tril(torch.ones((max_len, max_len), dtype=torch.bool)).view(
+        #    1, 1, max_len, max_len
+        #)
         query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = bias[:, :, key_length - query_length : key_length, :key_length].to(query.device)
+        # Could potentially get super slow if the devices are different
+        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(query.device)
 
         # Keep the attention weights computation in fp32 to avoid overflow issues
         query = query.to(torch.float32)
@@ -451,7 +452,7 @@ class ParallelSelfAttention(nn.Module):
         mask_value = torch.finfo(attn_weights.dtype).min
         # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
         # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
-        mask_value = torch.tensor(mask_value, dtype=attn_weights.dtype).to(attn_weights.device)
+        #mask_value = torch.tensor(mask_value, dtype=attn_weights.dtype).to(attn_weights.device)
         attn_weights = torch.where(causal_mask, attn_weights, mask_value)
 
         attn_weights = attn_weights / self.norm_factor
