@@ -167,10 +167,7 @@ def _get_batch(neox_args, tokenizer, keys, data, datatype):
 
     # Unpack.
     tokens_ = data_b["text"].long()
-    if "label" in data_b:
-        labels = data_b["label"].long()[:, 1:].contiguous()
-    else:
-        labels = tokens_[:, 1:].contiguous()
+    labels = tokens_[:, 1:].contiguous()
     tokens = tokens_[:, :-1].contiguous()
 
     # Get the masks and position ids.
@@ -179,7 +176,8 @@ def _get_batch(neox_args, tokenizer, keys, data, datatype):
         eod_token=neox_args.tokenizer.eod,
         eod_mask_loss=neox_args.eod_mask_loss,
     )
-
+    if "label" in data_b:
+        loss_mask = (data_b["label"] != -100).to(tokens.dtype)
     return tokens, labels, loss_mask, attention_mask, position_ids
 
 

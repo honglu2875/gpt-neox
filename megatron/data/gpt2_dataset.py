@@ -83,9 +83,9 @@ class GPT2Dataset(torch.utils.data.Dataset):
             datasets = [self.indexed_dataset] if self.label_dataset is None else [self.indexed_dataset, self.label_dataset]
             samples = [None] * len(datasets)
             # If we are within the same document, just extract the chunk.
-            for i, dataset in enumerate(datasets):
+            for n, dataset in enumerate(datasets):
                 if doc_index_f == doc_index_l:
-                    samples[i] = dataset.get(
+                    samples[n] = dataset.get(
                         self.doc_idx[doc_index_f],
                         offset=offset_f,
                         length=offset_l - offset_f + 1,
@@ -104,7 +104,7 @@ class GPT2Dataset(torch.utils.data.Dataset):
                             self.doc_idx[doc_index_l], length=offset_l + 1
                         )
                     )
-                    samples[i] = np.concatenate(sample_list)
+                    samples[n] = np.concatenate(sample_list)
 
             if len(datasets) == 1:
                 return {"text": np.array(samples[0], dtype=np.int64)}
