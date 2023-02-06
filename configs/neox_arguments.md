@@ -546,6 +546,20 @@ Model Arguments
       x = x + attn(y) + mlp(y)
 
 
+- **gpt_j_rotary_fn**: bool
+
+    Default = False
+
+    If True, we use `rotate_every_two` from GPT-J Huggingface implementation rather than `rotate_half`.
+
+    
+- **hf_gpt_j_compatible**: bool
+
+    Default = False
+
+    There is a minor linear algebra difference in the GPT-J implementation of huggingface and neox (exchanging the orders of reshape and split resulting in different matrices). If True, we will adjust to the huggingface GPT-J implementation so that directly copying weights becomes possible.
+
+
 
 - **soft_prompt_tuning**: dict
 
@@ -1023,6 +1037,13 @@ Training Arguments
     Default = None
 
     List of paths to train datasets.
+
+
+- **label_data_paths**: list
+
+    Default = None
+
+    List of paths to label datasets (should be fully in sync with train data, not shifted by 1!).
 
 
 
