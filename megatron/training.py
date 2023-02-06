@@ -177,7 +177,7 @@ def _get_batch(neox_args, tokenizer, keys, data, datatype):
         eod_mask_loss=neox_args.eod_mask_loss,
     )
     if "label" in data_b:
-        loss_mask = (data_b["label"] != -100).to(tokens.dtype)
+        loss_mask = (data_b["label"][:, 1:] != -100).to(tokens.dtype)
     return tokens, labels, loss_mask, attention_mask, position_ids
 
 
