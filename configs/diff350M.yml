@@ -1,0 +1,126 @@
+# CodeGen-NeoX pretraining setup
+{
+   # parallelism settings ( you will want to change these based on your cluster setup, ideally scheduling pipeline stages
+   # across the node boundaries )
+   "pipe-parallel-size": 1,
+   "model-parallel-size": 1,
+
+   # finetuning without caring about previous iterations
+   "finetune": true,
+   # when using generate.py, the delimiter for prompts
+   "prompt_end": "---prompt end---\n",
+
+   # model settings
+   "num-layers": 20,
+   "hidden-size": 1024,
+   "num-attention-heads": 16,
+   "seq-length": 2048,
+   "max-position-embeddings": 2048,
+   "norm": "layernorm",
+   "pos-emb": "rotary",
+   #"pos-emb": "sinusoidal",
+   "no-weight-tying": true,
+   "gpt_j_residual": true,
+   "gpt_j_tied": true,
+   "gpt_j_rotary_fn": true,
+   "hf_gpt_j_compatible": true,
+   #"output_layer_parallelism": "column",
+   "activation": "gelu",
+   "pos-emb": "rotary",
+   "rotary_pct": 0.5,
+   "apply_query_key_layer_scaling": false,
+   "attention_softmax_in_fp32": true,
+   "save": "diff_350",
+   "load": "codegen_megatron_350m",
+
+   # these should provide some speedup but takes a while to build, set to true if desired
+   "scaled-upper-triang-masked-softmax-fusion": true,
+   "bias-gelu-fusion": true,
+
+   # init methods
+   "init_method": "small_init",
+   "output_layer_init_method": "wang_init",
+
+   # optimizer settings
+   "optimizer": {
+     "type": "Adam",
+     "params": {
+       "lr": 0.00003,
+       "betas": [0.9, 0.999],
+       "eps": 1.0e-8,
+     }
+   },
+   "min_lr": 0.000003,
+
+   # for all zero_optimization options, see https://www.deepspeed.ai/docs/config-json/#zero-optimizations-for-fp16-training
+   "zero_optimization": {
+    "stage": 1,
+    "allgather_partitions": True,
+    "allgather_bucket_size": 500000000,
+    "overlap_comm": True,
+    "reduce_scatter": True,
+    "reduce_bucket_size": 500000000,
+    "contiguous_gradients": True,
+  },
+   # batch / data settings
+   "train_micro_batch_size_per_gpu": 32, 
+   "data-impl": "mmap",
+   "num_workers": 1,
+
+   # activation checkpointing
+   "checkpoint-activations": true,
+   "checkpoint-num-layers": 1,
+   "partition-activations": true,
+   "synchronize-each-layer": true,
+
+   # regularization
+   "gradient_clipping": 1.0,
+   "weight-decay": 0.1,
+   "hidden-dropout": 0,
+   "attention-dropout": 0,
+
+   # precision settings
+   "fp16": {
+     "fp16": true,
+     "enabled": true,
+     "loss_scale": 0,
+     "loss_scale_window": 1000,
+     "hysteresis": 2,
+     "min_loss_scale": 1
+   },
+
+   # misc. training settings
+   "train-iters": 10000,
+   "lr-decay-iters": 2500,
+   "distributed-backend": "nccl",
+   "lr-decay-style": "cosine",
+   "warmup": 0.01,
+   "checkpoint-factor": 2500,
+   "eval-interval": 40000,
+   "eval-iters": 10,
+
+   # logging
+   "log-interval": 100,
+   "steps_per_print": 10,
+   "wall_clock_breakdown": true,
+
+   #"tokenizer-type": "HFTokenizer",
+   "tokenizer-type": "HFGPT2Tokenizer",
+   "vocab-file": "Salesforce/codegen-350M-mono",
+   #"vocab-file": "/fsx/diff_models/codegen_vocab.json",
+   
+   #"train-data-paths": ["/mnt/nvme/home/honglu/diff_models_megatron/data/1-deduped_train/train_text_document"],
+   #"valid-data-paths": ["/mnt/nvme/home/honglu/diff_models_megatron/data/1-deduped_test/test_text_document"],
+   #"test-data-paths": ["/mnt/nvme/home/honglu/diff_models_megatron/data/1-deduped_test/test_text_document"],
+   #"valid-data-paths": ["/mnt/nvme/home/honglu/diff_models_megatron/data/1-deduped_test/test_text_document"],
+   #"test-data-paths": ["/mnt/nvme/home/honglu/diff_models_megatron/data/1-deduped_test/test_text_document"],
+   "train-data-paths": ["/mnt/nvme/home/honglu/diff_models_megatron/neox_diff_data/train_text_document"],
+   "label-data-paths": ["/mnt/nvme/home/honglu/diff_models_megatron/neox_diff_data/train_label_document"],
+   "valid-data-paths": ["/mnt/nvme/home/honglu/diff_models_megatron/neox_diff_data/validation_text_document"],
+   "test-data-paths": ["/mnt/nvme/home/honglu/diff_models_megatron/neox_diff_data/validation_text_document"],
+
+   "use_wandb": true,
+
+   #"launcher": "slurm",
+   #"deepspeed_slurm": true,
+}
