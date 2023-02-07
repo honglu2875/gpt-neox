@@ -163,7 +163,8 @@ def pretrain(neox_args):
 
 def _get_batch(neox_args, tokenizer, keys, data, datatype):
     """Support function for get_batch / get_batch pipe (to avoid code repetition)"""
-    data_b = mpu.broadcast_data(keys, data, datatype)
+    _keys = [k for k in keys if k in data]
+    data_b = mpu.broadcast_data(_keys, data, datatype)
 
     # Unpack.
     tokens_ = data_b["text"].long()
@@ -177,7 +178,7 @@ def _get_batch(neox_args, tokenizer, keys, data, datatype):
         eod_mask_loss=neox_args.eod_mask_loss,
     )
     if "label" in data_b:
-        loss_mask = (data_b["label"][:, 1:] != -100).to(tokens.dtype)
+        loss_mask = (data_b["label"][:, 1:] >= 0).to(tokens.dtype)
     return tokens, labels, loss_mask, attention_mask, position_ids
 
 

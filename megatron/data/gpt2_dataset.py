@@ -107,7 +107,7 @@ class GPT2Dataset(torch.utils.data.Dataset):
                     samples[n] = np.concatenate(sample_list)
 
             if len(datasets) == 1:
-                return {"text": np.array(samples[0], dtype=np.int64), "label": None}
+                return {"text": np.array(samples[0], dtype=np.int64)}
             else:
                 return {"text": np.array(samples[0], dtype=np.int64), "label": np.array(samples[1], dtype=np.int64)}
         except IndexError:
