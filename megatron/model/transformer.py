@@ -265,13 +265,13 @@ class ParallelSelfAttention(nn.Module):
             self.rotary_emb = None
             
         
-        if self.hf_gpt_j_compatible:
-            max_len = neox_args.max_position_embeddings
-            self.max_position_embeddings = max_len
-            self.bias = torch.tril(torch.ones((max_len, max_len), dtype=torch.uint8)).reshape(
-                1, 1, max_len, max_len
-            ).to(torch.device('cuda'))
-            self.device_synced = False
+        #if self.hf_gpt_j_compatible:
+            #max_len = neox_args.max_position_embeddings
+            #self.max_position_embeddings = max_len
+            #self.bias = torch.tril(torch.ones((max_len, max_len), dtype=torch.uint8)).reshape(
+            #    1, 1, max_len, max_len
+            #).to(torch.device('cuda'))
+            #self.device_synced = False
         
 
         self.attention_type = neox_args.attention_config[layer_number]
@@ -609,7 +609,8 @@ class ParallelSelfAttention(nn.Module):
 
         output, bias = self.dense(context_layer)
         
-        
+        if bias is None:
+            bias = torch.zeros_like(output)
 
         if self.use_cache:
             output = [output, present]
@@ -716,6 +717,9 @@ class ParallelTransformerLayer(nn.Module):
             attention_output, attention_bias = self.attention(
                 x1, attention_mask, layer_past=layer_past
             )
+            if attention_bias is None:
+                attention_bias = torch.zeros_like(attention_output)
+
             if self.use_cache:
                 attention_output, presents = attention_output
                 self.layer_past = presents
@@ -730,6 +734,8 @@ class ParallelTransformerLayer(nn.Module):
 
             # mlp operator
             mlp_output, mlp_bias = self.mlp(x2)
+            if mlp_bias is None:
+                mlp_bias = torch.zeros_like(mlp_output)
             with torch.enable_grad():
                 output = bias_dropout_fn(
                     mlp_output,
