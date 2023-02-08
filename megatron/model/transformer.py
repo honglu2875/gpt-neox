@@ -219,6 +219,7 @@ class ParallelSelfAttention(nn.Module):
         # Strided linear layer.
         self.query_key_value = mpu.ColumnParallelLinear(
             neox_args=neox_args,
+            bias=not neox_args.hf_gpt_j_compatible,
             input_size=neox_args.hidden_size,
             output_size=3 * neox_args.hidden_size,
             gather_output=False,
@@ -313,6 +314,7 @@ class ParallelSelfAttention(nn.Module):
         # Output.
         self.dense = mpu.RowParallelLinear(
             neox_args=neox_args,
+            bias=not neox_args.hf_gpt_j_compatible,
             input_size=neox_args.hidden_size,
             output_size=neox_args.hidden_size,
             input_is_parallel=True,
