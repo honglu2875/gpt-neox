@@ -113,6 +113,9 @@ class ParallelMLP(nn.Module):
             skip_bias_add=True,
             parallel_output=parallel_output,
         )
+        self.hf_gpt_j_compatible = neox_args.hf_gpt_j_compatible
+        if self.hf_gpt_j_compatible:
+            self.dense_dropout = nn.Dropout(neox_args.hidden_dropout)
 
     def forward(self, hidden_states):
 
@@ -132,6 +135,8 @@ class ParallelMLP(nn.Module):
 
         # [s, b, h]
         output, output_bias = self.dense_4h_to_h(intermediate_parallel)
+        if self.hf_gpt_j_compatible:
+            output, output_bias = self.dense_dropout(output + output_bias), torch.zeros_like(output_bias)
         return output, output_bias
 
 
@@ -263,16 +268,6 @@ class ParallelSelfAttention(nn.Module):
             )
         else:
             self.rotary_emb = None
-            
-        
-        #if self.hf_gpt_j_compatible:
-            #max_len = neox_args.max_position_embeddings
-            #self.max_position_embeddings = max_len
-            #self.bias = torch.tril(torch.ones((max_len, max_len), dtype=torch.uint8)).reshape(
-            #    1, 1, max_len, max_len
-            #).to(torch.device('cuda'))
-            #self.device_synced = False
-        
 
         self.attention_type = neox_args.attention_config[layer_number]
         self.use_flash_attention = self.attention_type == "flash"
@@ -310,6 +305,8 @@ class ParallelSelfAttention(nn.Module):
             # on average it should not be partition dependent.
             self.dropout_p = neox_args.attention_dropout
             self.attention_dropout = nn.Dropout(self.dropout_p)
+            if self.hf_gpt_j_compatible:
+                self.dense_dropout = nn.Dropout(self.dropout_p)
 
         # Output.
         self.dense = mpu.RowParallelLinear(
@@ -608,6 +605,9 @@ class ParallelSelfAttention(nn.Module):
         # =================
 
         output, bias = self.dense(context_layer)
+        if self.hf_gpt_j_compatible:
+            # Huggingface implementation has a dropout here. Bias will be None so we can skip that.
+            output = self.dense_dropout(output)
         
         if bias is None:
             bias = torch.zeros_like(output)
@@ -670,7 +670,8 @@ class ParallelTransformerLayer(nn.Module):
         # Layernorm on the output of the attention layer.
         # If GPT-J residuals are used, this is surpurfulous but leaving it in
         # leads to cleaner code
-        self.post_attention_layernorm = norm(neox_args.hidden_size, eps=eps)
+        if not self.gpt_j_residual or not self.gpt_j_tied:
+            self.post_attention_layernorm = norm(neox_args.hidden_size, eps=eps)
 
         # MLP
         self.mlp = ParallelMLP(
