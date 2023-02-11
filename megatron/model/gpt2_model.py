@@ -77,6 +77,14 @@ def _pre_transformer_block(args):
     return fn(args)
 
 
+def _dropout_factory(p: float):
+    def dropout_layer(args):
+        assert len(args) == 2, "Incorrect number of arguments to _dropout_block"
+        fn = lambda _args: (nn.functional.dropout(_args[0], p=p), *_args[1:])
+        return fn(args)
+    return dropout_layer
+
+
 def _post_transformer_block(args):
     # from (hidden_states, attention_mask)
     # to (hidden_states.T)
@@ -206,6 +214,8 @@ class GPT2ModelPipe(PipelineModule, torch.nn.Module):
         #
         # outputs are now (hidden_states,  attention_mask)
 
+        if self.neox_args.hf_gpt_j_compatible:
+            self.specs.append(_dropout_factory(self.neox_args.hidden_dropout))
         self.specs.append(_pre_transformer_block)
 
         # T5 RPE positional embedding
