@@ -360,10 +360,7 @@ class ParallelSelfAttention(nn.Module):
         )
 
         # change view to [b, np, sq, sk]
-        if self.hf_gpt_j_compatible:
-            attention_scores = matmul_result.view(output_size[1], output_size[0], *output_size[2:]).transpose(0,1).contiguous()
-        else:
-            attention_scores = matmul_result.view(*output_size)
+        attention_scores = matmul_result.view(*output_size)
 
         # ==================================================
         # Update attention mask for inference. [b, np, sq, sk]
